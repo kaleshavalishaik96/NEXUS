@@ -1,0 +1,6 @@
+{
+  "name": "NEXUS — Trust Fabric for the AI Economy",
+  "description": "AI agent commerce and trust platform with PayPal Sentinel risk intelligence, Proof Engine verification, and PayPal Sandbox payments.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

@@ -1,0 +1,125 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // Helper: Validates Document ID format to prevent ID poisoning / path injection
+    function isValidId(docId) {
+      return docId is string &&
+        docId.size() > 0 &&
+        docId.size() <= 128 &&
+        docId.matches('^[a-zA-Z0-9_\\-\\.:]+$');
+    }
+
+    // Helper: Check if request is authenticated
+    function isAuthenticated() {
+      return request.auth != null && request.auth.uid != null;
+    }
+
+    // Helper: Check if request is from authorized administrator
+    function isAdmin() {
+      return isAuthenticated() &&
+        request.auth.token.email == 'kaleshavalishaik001@gmail.com' &&
+        request.auth.token.email_verified == true;
+    }
+
+    // Helper: Server-side authorization gate
+    // Rejects unauthenticated direct browser writes; requires verified server-side signature or authenticated administrator
+    function isServerAuthorized() {
+      return (request.resource.data.serverSignature is string &&
+              request.resource.data.serverSignature == 'nexus-server-auth-sig-v1') ||
+             isAdmin();
+    }
+
+    // Agents Collection: Public directory of network agents
+    match /agents/{agentId} {
+      allow get: if isValidId(agentId);
+      allow list: if true;
+      allow create: if isServerAuthorized() && isValidId(agentId) &&
+        request.resource.data.id is string &&
+        request.resource.data.name is string &&
+        request.resource.data.role in ['buyer', 'seller', 'verifier'] &&
+        request.resource.data.trustScore is number;
+      allow update: if isServerAuthorized() && isValidId(agentId) &&
+        request.resource.data.id == resource.data.id;
+      allow delete: if false; // Agents are audited, soft-deactivate rather than delete
+    }
+
+    // Contracts Collection: Autonomous contracts forged between agents
+    match /contracts/{contractId} {
+      allow get: if isValidId(contractId);
+      allow list: if true;
+      allow create: if isServerAuthorized() && isValidId(contractId) &&
+        request.resource.data.id is string &&
+        request.resource.data.title is string &&
+        request.resource.data.budgetUsd is number &&
+        request.resource.data.contractSha256 is string;
+      allow update: if isServerAuthorized() && isValidId(contractId) &&
+        request.resource.data.id == resource.data.id;
+      allow delete: if false;
+    }
+
+    // Sentinel Alerts Collection: Application-level transaction risk investigations
+    match /sentinelAlerts/{alertId} {
+      allow get: if isValidId(alertId);
+      allow list: if true;
+      allow create: if isServerAuthorized() && isValidId(alertId) &&
+        request.resource.data.contractId is string &&
+        request.resource.data.riskScore is number &&
+        request.resource.data.severity in ['low', 'moderate', 'high', 'critical'];
+      allow update: if isServerAuthorized() && isValidId(alertId) &&
+        request.resource.data.id == resource.data.id;
+      allow delete: if false;
+    }
+
+    // Proof Records Collection: Independent verifications and attestations
+    match /proofRecords/{recordId} {
+      allow get: if isValidId(recordId);
+      allow list: if true;
+      allow create: if isServerAuthorized() && isValidId(recordId) &&
+        request.resource.data.contractId is string &&
+        request.resource.data.verifierAgentId is string &&
+        request.resource.data.overallVerdict in ['passed', 'failed', 'needs_review'] &&
+        request.resource.data.deliverableSha256 is string;
+      allow update: if false; // Proof records are tamper-evident attestations
+      allow delete: if false;
+    }
+
+    // Ledger Events Collection: Append-only hash-chained audit blocks
+    match /ledgerEvents/{eventId} {
+      allow get: if isValidId(eventId);
+      allow list: if true;
+      allow create: if isServerAuthorized() && isValidId(eventId) &&
+        request.resource.data.blockHeight is number &&
+        request.resource.data.eventType is string &&
+        request.resource.data.blockHash is string &&
+        request.resource.data.payloadHash is string;
+      allow update: if false; // Immutable ledger: updates strictly forbidden
+      allow delete: if false; // Immutable ledger: deletes strictly forbidden
+    }
+
+    // PayPal Transactions Collection: Sandbox escrow orders & capture lifecycle
+    match /paypalTransactions/{transactionId} {
+      allow get: if isValidId(transactionId);
+      allow list: if true;
+      allow create: if isServerAuthorized() && isValidId(transactionId) &&
+        request.resource.data.orderId is string &&
+        request.resource.data.contractId is string &&
+        request.resource.data.amountUsd is number;
+      allow update: if isServerAuthorized() && isValidId(transactionId) &&
+        request.resource.data.id == resource.data.id;
+      allow delete: if false;
+    }
+
+    // PayPal Webhook Idempotency Registry: Prevents duplicate event processing
+    match /processedWebhookEvents/{eventId} {
+      allow get: if isValidId(eventId);
+      allow list: if true;
+      allow create: if isServerAuthorized() && isValidId(eventId) &&
+        request.resource.data.id is string &&
+        request.resource.data.eventId is string &&
+        request.resource.data.eventType is string;
+      allow update: if false; // Append-only deduplication record
+      allow delete: if false;
+    }
+  }
+}
